@@ -2,12 +2,16 @@ import time
 import subprocess
 import psutil
 import curses
+import csv
+from datetime import datetime
 
 
 class SystemMonitor:
     def __init__(self, stdscr):
         self.stdscr = stdscr
         self.setup_curses()
+        self.recording = False
+        self.log_file = None
 
     def setup_curses(self):
         curses.curs_set(0)  # Hide the cursor
@@ -25,53 +29,60 @@ class SystemMonitor:
         except FileNotFoundError:
             return "Power data not available"
 
+    def start_recording(self):
+        if not self.recording:
+            self.log_file = open('system_metrics_log.csv', 'w', newline='')
+            self.writer = csv.writer(self.log_file)
+            headers = ['Timestamp', 'CPU Usage', 'RAM Usage', 'Disk Usage', 'Network Sent', 'Network Received',
+                       'Temperature', 'Power Consumption']
+            self.writer.writerow(headers)
+            self.recording = True
+
+    def stop_recording(self):
+        if self.recording:
+            self.log_file.close()
+            self.recording = False
+
+    def log_data(self, data):
+        if self.recording:
+            self.writer.writerow(data)
+
     def display_metrics(self):
         while True:
             self.stdscr.clear()
-            self.display_cpu_metrics()
-            self.display_memory_metrics()
-            self.display_disk_metrics()
-            self.display_network_metrics()
-            self.display_temperature()
-            self.display_power_consumption()
-
+            data = self.collect_data()
+            self.display_data(data)
+            self.log_data(data)
             self.stdscr.refresh()
             time.sleep(1)
-            if self.stdscr.getch() == ord('q'):  # Press 'q' to quit
+            key = self.stdscr.getch()
+            if key == ord('q'):
                 break
+            elif key == ord('R'):  # Shift + R to start recording
+                self.start_recording()
+            elif key == ord('S'):  # Shift + S to stop recording
+                self.stop_recording()
 
-    def display_cpu_metrics(self):
+    def collect_data(self):
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cpu_usage = psutil.cpu_percent()
-        cpu_free = 100 - cpu_usage
-        self.stdscr.addstr(0, 0, "CPU Usage:", curses.A_BOLD)
-        self.stdscr.addstr(1, 0, f"{cpu_usage}% used, {cpu_free}% free")
-
-    def display_memory_metrics(self):
-        memory = psutil.virtual_memory()
-        self.stdscr.addstr(3, 0, "RAM Usage:", curses.A_BOLD)
-        self.stdscr.addstr(4, 0, f"{memory.percent}% used, {100 - memory.percent}% free")
-
-    def display_disk_metrics(self):
-        disk = psutil.disk_usage('/')
-        self.stdscr.addstr(6, 0, "Disk Usage:", curses.A_BOLD)
-        self.stdscr.addstr(7, 0, f"{disk.percent}% used, {100 - disk.percent}% free")
-
-    def display_network_metrics(self):
+        ram_usage = psutil.virtual_memory().percent
+        disk_usage = psutil.disk_usage('/').percent
         net_io = psutil.net_io_counters()
         sent_mb = net_io.bytes_sent / (1024 ** 2)
         recv_mb = net_io.bytes_recv / (1024 ** 2)
-        self.stdscr.addstr(9, 0, "Network Usage:", curses.A_BOLD)
-        self.stdscr.addstr(10, 0, f"Sent: {sent_mb:.2f} MB, Received: {recv_mb:.2f} MB")
-
-    def display_temperature(self):
         temp_output = self.get_temperature()
-        self.stdscr.addstr(12, 0, "Temperatures:", curses.A_BOLD)
-        self.stdscr.addstr(13, 0, f"{temp_output}")
-
-    def display_power_consumption(self):
         power_consumption = self.get_power_consumption()
-        self.stdscr.addstr(15, 0, "Power Consumption:", curses.A_BOLD)
-        self.stdscr.addstr(16, 0, f"{power_consumption}")
+        return [timestamp, cpu_usage, ram_usage, disk_usage, sent_mb, recv_mb, temp_output, power_consumption]
+
+    def display_data(self, data):
+        self.stdscr.addstr(0, 0, f"CPU Usage: {data[1]}%")
+        self.stdscr.addstr(1, 0, f"RAM Usage: {data[2]}%")
+        self.stdscr.addstr(2, 0, f"Disk Usage: {data[3]}%")
+        self.stdscr.addstr(3, 0, f"Network Sent: {data[4]:.2f} MB, Received: {data[5]:.2f} MB")
+        self.stdscr.addstr(4, 0, "Temperatures:")
+        self.stdscr.addstr(5, 0, data[6])
+        self.stdscr.addstr(6, 0, f"Power Consumption: {data[7]}")
 
 
 def main(stdscr):
