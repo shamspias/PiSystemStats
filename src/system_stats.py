@@ -1,63 +1,49 @@
-import os
 import time
 import subprocess
 import psutil
-
-
-def get_cpu_usage():
-    """Return the CPU usage percentage."""
-    return psutil.cpu_percent(interval=1)
+import curses
 
 
 def get_temperature():
-    """Retrieve the system temperature using 'sensors' command."""
-    try:
-        result = subprocess.run(['sensors'], capture_output=True, text=True)
-        return result.stdout
-    except Exception as e:
-        return f"Failed to get temperature: {str(e)}"
+    result = subprocess.run(['sensors'], capture_output=True, text=True)
+    return result.stdout
 
 
 def get_power_consumption():
-    """Retrieve the system power consumption from '/sys/class/power_supply/'."""
-    power_path = "/sys/class/power_supply/battery/power_now"
     try:
-        with open(power_path, "r") as file:
+        with open("/sys/class/power_supply/battery/power_now", "r") as file:
             power = int(file.read().strip()) / 1_000_000  # Convert microWatts to Watts
         return f"{power} W"
     except FileNotFoundError:
         return "Power data not available"
-    except Exception as e:
-        return f"Failed to read power data: {str(e)}"
 
 
-def get_gpu_usage():
-    """Mock function to get GPU usage. Replace with actual method depending on your GPU."""
-    return "GPU usage functionality needs to be implemented based on specific hardware."
-
-
-def get_npu_usage():
-    """Mock function to get NPU usage. Replace with actual method depending on your NPU."""
-    return "NPU usage functionality needs to be implemented based on specific hardware."
-
-
-def display_data():
-    """Function to display all collected system data."""
+def draw_screen(stdscr):
+    curses.curs_set(0)  # Hide the cursor
+    stdscr.nodelay(1)  # Make getch non-blocking
     while True:
-        cpu_usage = get_cpu_usage()
+        stdscr.clear()  # Clear the screen
+        cpu_usage = psutil.cpu_percent()
         temp_output = get_temperature()
         power_consumption = get_power_consumption()
-        gpu_usage = get_gpu_usage()
-        npu_usage = get_npu_usage()
 
-        print(f"CPU Usage: {cpu_usage}%")
-        print(f"Temperature:\n{temp_output}")
-        print(f"Power Consumption: {power_consumption}")
-        print(f"GPU Usage: {gpu_usage}")
-        print(f"NPU Usage: {npu_usage}")
-        print("-" * 20)
-        time.sleep(1)
+        # Display Headers
+        stdscr.addstr(0, 0, "CPU Usage:", curses.A_BOLD)
+        stdscr.addstr(1, 0, f"{cpu_usage}%\n")
+        stdscr.addstr(3, 0, "Temperatures:", curses.A_BOLD)
+        stdscr.addstr(4, 0, f"{temp_output}")
+        stdscr.addstr(15, 0, "Power Consumption:", curses.A_BOLD)
+        stdscr.addstr(16, 0, f"{power_consumption}\n")
+
+        stdscr.refresh()  # Refresh the screen
+        time.sleep(1)  # Update every 1 second
+        if stdscr.getch() == ord('q'):  # Press 'q' to quit
+            break
+
+
+def main():
+    curses.wrapper(draw_screen)
 
 
 if __name__ == "__main__":
-    display_data()
+    main()
